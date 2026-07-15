@@ -1,4 +1,4 @@
-name: Generate Snake Animation
+name: Generate Profile Animations
 
 on:
   # 毎日 00:00 UTC に自動更新
@@ -17,6 +17,23 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # 🏙 Contribution を立体の街並みにする（自作スクリプト）
+      - name: Generate city SVG
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_USER: razu9120
+          OUT_DIR: dist
+        run: node scripts/generate-city.js
+
+      # 🐍 Snake アニメーション
       - name: Generate snake SVG
         uses: Platane/snk@v3
         with:
@@ -25,6 +42,7 @@ jobs:
             dist/github-contribution-grid-snake.svg
             dist/github-contribution-grid-snake-dark.svg?palette=github-dark
 
+      # dist/ 一式を output ブランチへ公開
       - name: Push to output branch
         uses: crazy-max/ghaction-github-pages@v4
         with:

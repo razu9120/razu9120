@@ -8,6 +8,21 @@
 <!-- </div> -->
 
 <!-- ===================================================================== -->
+<!--  🏙 Contribution City  (自作: scripts/generate-city.js)                -->
+<!--  コミット数が多い日ほどビルが高くなり、手前の大通りを車が走ります       -->
+<!--  ↓ 表示には Actions の実行で output ブランチに SVG が生成される必要あり  -->
+<!-- ===================================================================== -->
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/razu9120/razu9120/output/city-dark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/razu9120/razu9120/output/city.svg" />
+  <img alt="My commits as a city" src="https://raw.githubusercontent.com/razu9120/razu9120/output/city-dark.svg" width="100%" />
+</picture>
+
+</div>
+
+<!-- ===================================================================== -->
 <!--  🐍 Snake animation                                                    -->
 <!--  ↓ 表示には .github/workflows/snake.yml が必要です（同梱しています）    -->
 <!-- ===================================================================== -->
