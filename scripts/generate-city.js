@@ -5,14 +5,15 @@
  * GitHub の contribution グラフを「アイソメトリックな夜の街並み」として描く
  * アニメーション SVG を生成します。
  *   - 1日 = 1棟のビル。コミット数が多いほどビルが高くなる
- *   - 週を分割して複数の「街区(ブロック)」に配置し、間を道路で区切る
- *   - 手前の大通りを車が走る（ナイトシーン・夜のみ）
+ *   - 週を分割して複数の「街区(ブロック)」に配置し、間を大通りで区切る
+ *   - 街区の間の大通りを車が走る（手前のビルに隠れる／ナイトのみ）
  *
  * 出力: dist/city.svg
  *
  * 実行:
  *   GITHUB_TOKEN=xxxx GH_USER=razu9120 node scripts/generate-city.js
  *   （トークン無しで実行するとモックデータでプレビュー生成）
+ *   CAR_PREVIEW=1 を付けると車を大通りの中間に固定して静止プレビュー
  */
 
 const fs = require("fs");
@@ -21,6 +22,7 @@ const path = require("path");
 const USER = process.env.GH_USER || "razu9120";
 const TOKEN = process.env.GITHUB_TOKEN;
 const OUT_DIR = process.env.OUT_DIR || path.join(process.cwd(), "dist");
+const CAR_PREVIEW = !!process.env.CAR_PREVIEW;
 
 // ---------- レイアウト定数 ----------
 const SX = 11;      // アイソメトリックのX半ステップ（タイル幅の半分）
@@ -32,7 +34,7 @@ const PAD = 26;     // 余白
 // ---------- 街区(ブロック)分割 ----------
 const WEEKS_PER_BLOCK = 14; // 1街区あたりの週数
 const BLOCKS_PER_ROW = 2;   // 横に並べる街区数（2 → 2xN のグリッド）
-const GAP = 3;              // 街区の間（道路）の広さ（セル）
+const GAP = 3;              // 街区の間（大通り）の広さ（セル）
 
 // ---------- 配色（ナイトのみ） ----------
 const THEME = {
@@ -165,22 +167,19 @@ function building(col, row, count, max) {
 }
 
 // ---------- 車 ----------
-function car(id, from, to, color, dur, delay) {
-  const dx = (to.x - from.x).toFixed(1);
-  const dy = (to.y - from.y).toFixed(1);
-  const body = `
-    <g class="${id}">
-      <g transform="translate(${from.x.toFixed(1)},${from.y.toFixed(1)})">
-        <polygon points="0,0 8,4 0,8 -8,4" fill="${scale(color, 0.7)}"/>
-        <polygon points="0,-5 8,-1 8,4 0,0" fill="${color}"/>
-        <polygon points="0,-5 -8,-1 -8,4 0,0" fill="${scale(color, 0.82)}"/>
-        <polygon points="0,-5 8,-1 0,3 -8,-1" fill="${scale(color, 1.25)}"/>
-        <circle cx="6" cy="1.2" r="1.3" fill="#fff7d6"/>
-      </g>
-    </g>`;
-  const css = `.${id}{animation:${id} ${dur}s linear ${delay}s infinite;}
+function carShape(pos, color) {
+  return `<g transform="translate(${pos.x.toFixed(1)},${pos.y.toFixed(1)})">
+    <polygon points="0,0 8,4 0,8 -8,4" fill="${scale(color, 0.7)}"/>
+    <polygon points="0,-5 8,-1 8,4 0,0" fill="${color}"/>
+    <polygon points="0,-5 -8,-1 -8,4 0,0" fill="${scale(color, 0.82)}"/>
+    <polygon points="0,-5 8,-1 0,3 -8,-1" fill="${scale(color, 1.25)}"/>
+    <circle cx="6" cy="1.2" r="1.3" fill="#fff7d6"/>
+  </g>`;
+}
+function carCss(id, from, to, dur, delay) {
+  const dx = (to.x - from.x).toFixed(1), dy = (to.y - from.y).toFixed(1);
+  return `.${id}{animation:${id} ${dur}s linear ${delay}s infinite;}
 @keyframes ${id}{from{transform:translate(0,0)}to{transform:translate(${dx}px,${dy}px)}}`;
-  return { body, css };
 }
 
 // ---------- SVG組み立て ----------
@@ -219,34 +218,44 @@ function render(weeks) {
   const dash = (a, b) =>
     `<polyline points="${a.x.toFixed(1)},${a.y.toFixed(1)} ${b.x.toFixed(1)},${b.y.toFixed(1)}" stroke="${THEME.roadLine}" stroke-width="0.9" stroke-dasharray="5 6" fill="none"/>`;
 
-  // 街区の間の道路（内部ストリート）
-  let internalRoads = "";
+  // 街区の間の大通り（内部ストリート）＋ 中心線の座標を収集
+  let roads = "";
+  const vCols = [], hRows = [];
   for (let bj = 1; bj < BLOCKS_PER_ROW; bj++) {
     const c0 = bj * (WEEKS_PER_BLOCK + GAP) - GAP, c1 = bj * (WEEKS_PER_BLOCK + GAP), cm = (c0 + c1) / 2;
-    internalRoads += roadPoly([iso(c0, -0.2), iso(c1, -0.2), iso(c1, totalRows + 0.2), iso(c0, totalRows + 0.2)]);
-    internalRoads += dash(iso(cm, -0.2), iso(cm, totalRows + 0.2));
+    vCols.push(cm);
+    roads += roadPoly([iso(c0, -0.2), iso(c1, -0.2), iso(c1, totalRows + 0.2), iso(c0, totalRows + 0.2)]);
+    roads += dash(iso(cm, -0.2), iso(cm, totalRows + 0.2));
   }
   for (let bi = 1; bi < nBlockRows; bi++) {
     const r0 = bi * (rows + GAP) - GAP, r1 = bi * (rows + GAP), rm = (r0 + r1) / 2;
-    internalRoads += roadPoly([iso(-0.2, r0), iso(totalCols + 0.2, r0), iso(totalCols + 0.2, r1), iso(-0.2, r1)]);
-    internalRoads += dash(iso(-0.2, rm), iso(totalCols + 0.2, rm));
+    hRows.push(rm);
+    roads += roadPoly([iso(-0.2, r0), iso(totalCols + 0.2, r0), iso(totalCols + 0.2, r1), iso(-0.2, r1)]);
+    roads += dash(iso(-0.2, rm), iso(totalCols + 0.2, rm));
   }
 
-  // 手前の外周道路（車が周回する）
-  const aOut = totalRows + 0.1, aIn = totalRows + 1.0;
-  const perimA = roadPoly([iso(0, aOut), iso(totalCols, aOut), iso(totalCols, aIn), iso(0, aIn)]) +
-    dash(iso(0, totalRows + 0.55), iso(totalCols, totalRows + 0.55));
-  const bOut = totalCols + 0.1, bIn = totalCols + 1.0;
-  const perimB = roadPoly([iso(bOut, 0), iso(bOut, totalRows), iso(bIn, totalRows), iso(bIn, 0)]) +
-    dash(iso(totalCols + 0.55, 0), iso(totalCols + 0.55, totalRows));
+  // 車のルート（大通りを走行）
+  const routes = [];
+  vCols.forEach((cm) => {
+    routes.push({ from: iso(cm, -3), to: iso(cm, totalRows + 3), color: THEME.cars[0], dur: 8, delay: 0 });
+    routes.push({ from: iso(cm, -3), to: iso(cm, totalRows + 3), color: THEME.cars[2], dur: 8, delay: -4 });
+  });
+  hRows.forEach((rm) => {
+    routes.push({ from: iso(-3, rm), to: iso(totalCols + 3, rm), color: THEME.cars[1], dur: 8, delay: -2 });
+    routes.push({ from: iso(-3, rm), to: iso(totalCols + 3, rm), color: THEME.cars[3], dur: 8, delay: -6 });
+  });
 
-  // 車（外周を周回）
-  const carDefs = [
-    car("carA1", iso(-3, totalRows + 0.55), iso(totalCols + 3, totalRows + 0.55), THEME.cars[0], 8, 0),
-    car("carA2", iso(-3, totalRows + 0.55), iso(totalCols + 3, totalRows + 0.55), THEME.cars[2], 8, -4),
-    car("carB1", iso(totalCols + 0.55, -3), iso(totalCols + 0.55, totalRows + 3), THEME.cars[1], 7, -1.5),
-    car("carB2", iso(totalCols + 0.55, -3), iso(totalCols + 0.55, totalRows + 3), THEME.cars[3], 7, -5),
-  ];
+  const previewFrac = [0.34, 0.62, 0.4, 0.7, 0.3, 0.66];
+  const carsSvg = routes
+    .map((r, i) => {
+      if (CAR_PREVIEW) {
+        const f = previewFrac[i % previewFrac.length];
+        return carShape({ x: r.from.x + (r.to.x - r.from.x) * f, y: r.from.y + (r.to.y - r.from.y) * f }, r.color);
+      }
+      return `<g class="car${i}">${carShape(r.from, r.color)}</g>`;
+    })
+    .join("\n");
+  const css = CAR_PREVIEW ? "" : routes.map((r, i) => carCss(`car${i}`, r.from, r.to, r.dur, r.delay)).join("\n");
 
   // ビュー範囲
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -260,9 +269,6 @@ function render(weeks) {
   const H = maxY - minY + PAD * 2;
   const vb = `${(minX - PAD).toFixed(1)} ${(minY - PAD).toFixed(1)} ${W.toFixed(1)} ${H.toFixed(1)}`;
 
-  const css = carDefs.map((c) => c.css).join("\n");
-  const carsSvg = carDefs.map((c) => c.body).join("\n");
-
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W.toFixed(0)}" height="${H.toFixed(0)}" viewBox="${vb}" font-family="Segoe UI, sans-serif">
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
@@ -272,9 +278,8 @@ function render(weeks) {
     <style>${css}</style>
   </defs>
   <rect x="${(minX - PAD).toFixed(1)}" y="${(minY - PAD).toFixed(1)}" width="${W.toFixed(1)}" height="${H.toFixed(1)}" rx="12" fill="url(#sky)"/>
-  <g>${internalRoads}${perimA}${perimB}</g>
+  <g>${roads}</g>
   <g>${buildings}</g>
-  <g>${perimA}${perimB}</g>
   ${carsSvg}
   <text x="${(minX - PAD + 14).toFixed(1)}" y="${(maxY + PAD - 12).toFixed(1)}" fill="${THEME.text}" font-size="11" opacity="0.7">@${USER} · contributions as a city</text>
 </svg>`;
