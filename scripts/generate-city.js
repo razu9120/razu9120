@@ -234,16 +234,18 @@ function render(weeks) {
     roads += dash(iso(-0.2, rm), iso(totalCols + 0.2, rm));
   }
 
-  // 車のルート（大通りを走行）
-  const routes = [];
-  vCols.forEach((cm) => {
-    routes.push({ from: iso(cm, -3), to: iso(cm, totalRows + 3), color: THEME.cars[0], dur: 8, delay: 0 });
-    routes.push({ from: iso(cm, -3), to: iso(cm, totalRows + 3), color: THEME.cars[2], dur: 8, delay: -4 });
-  });
-  hRows.forEach((rm) => {
-    routes.push({ from: iso(-3, rm), to: iso(totalCols + 3, rm), color: THEME.cars[1], dur: 8, delay: -2 });
-    routes.push({ from: iso(-3, rm), to: iso(totalCols + 3, rm), color: THEME.cars[3], dur: 8, delay: -6 });
-  });
+  // 最前面の本通り（街の手前・内部ストリートと同じ GAP 幅）
+  const fr0 = totalRows + 0.0, fr1 = totalRows + GAP, frM = (fr0 + fr1) / 2;
+  const frontRoad =
+    roadPoly([iso(-0.5, fr0), iso(totalCols + 0.5, fr0), iso(totalCols + 0.5, fr1), iso(-0.5, fr1)]) +
+    dash(iso(-0.5, frM), iso(totalCols + 0.5, frM));
+
+  // 車は手前の本通りだけを走行（全ビルより手前＝現実どおり正しく重なる）
+  const routes = [
+    { from: iso(-3, frM - 0.55), to: iso(totalCols + 3, frM - 0.55), color: THEME.cars[0], dur: 9, delay: 0 },
+    { from: iso(-3, frM + 0.55), to: iso(totalCols + 3, frM + 0.55), color: THEME.cars[2], dur: 10, delay: -5 },
+    { from: iso(-3, frM), to: iso(totalCols + 3, frM), color: THEME.cars[1], dur: 8, delay: -3 },
+  ];
 
   const previewFrac = [0.34, 0.62, 0.4, 0.7, 0.3, 0.66];
   const carsSvg = routes
@@ -280,6 +282,7 @@ function render(weeks) {
   <rect x="${(minX - PAD).toFixed(1)}" y="${(minY - PAD).toFixed(1)}" width="${W.toFixed(1)}" height="${H.toFixed(1)}" rx="12" fill="url(#sky)"/>
   <g>${roads}</g>
   <g>${buildings}</g>
+  <g>${frontRoad}</g>
   ${carsSvg}
   <text x="${(minX - PAD + 14).toFixed(1)}" y="${(maxY + PAD - 12).toFixed(1)}" fill="${THEME.text}" font-size="11" opacity="0.7">@${USER} · contributions as a city</text>
 </svg>`;
