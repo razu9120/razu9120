@@ -35,8 +35,8 @@
 <!-- ===================================================================== -->
 <!--  📊 GitHub Analytics (放置で自動更新されます)                          -->
 <!-- ===================================================================== -->
-<div align="center">
+<!-- <div align="center">
 
 <img src="https://github-readme-streak-stats.herokuapp.com/?user=razu9120&hide_border=true&theme=tokyonight&ring=6c63ff&fire=6c63ff&currStreakLabel=6c63ff" alt="GitHub Streak" />
 
-</div>
+</div> -->

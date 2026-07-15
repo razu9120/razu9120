@@ -155,25 +155,39 @@ function building(col, row, count, max) {
         for (let wx = 0; wx < 2; wx++) {
           const on = ((col * 7 + row + fl * 3 + wx * 11) % 5) < (1 + Math.round(t * 3));
           const wc = on ? THEME.window : THEME.windowDim;
+          const cls = on ? ` class="tw${(col * 3 + row * 5 + fl * 2 + wx) % 6}"` : "";
           const sx0 = 0.18 + wx * 0.42, sw = 0.24;
           const ty = 0.14 + fl * (0.72 / floors), th = 0.4 / floors;
           const P = (s, tt) => ({ x: f.o.x + f.u.x * s, y: f.o.y + f.u.y * s - h * tt });
-          svg += `<polygon points="${pts([P(sx0, ty), P(sx0 + sw, ty), P(sx0 + sw, ty + th), P(sx0, ty + th)])}" fill="${wc}"/>`;
+          svg += `<polygon${cls} points="${pts([P(sx0, ty), P(sx0 + sw, ty), P(sx0 + sw, ty + th), P(sx0, ty + th)])}" fill="${wc}"/>`;
         }
       }
     }
+  }
+
+  // 屋上の航空障害灯（高層ビルのみ・赤く点滅）
+  if (h > 60) {
+    const bx = ((p0.x + p1.x + p2.x + p3.x) / 4).toFixed(1);
+    const by = ((p0.y + p1.y + p2.y + p3.y) / 4 - h - 1).toFixed(1);
+    svg += `<circle cx="${bx}" cy="${by}" r="2.6" fill="#ff5a5a" opacity="0.16"/>`;
+    svg += `<circle cx="${bx}" cy="${by}" r="1.3" fill="#ff6b6b" class="beacon"/>`;
   }
   return svg;
 }
 
 // ---------- 車 ----------
 function carShape(pos, color) {
+  // 進行方向は +x,+y（下り右）。前=ヘッドライト（白）、後=テールライト（赤）
   return `<g transform="translate(${pos.x.toFixed(1)},${pos.y.toFixed(1)})">
+    <ellipse cx="17" cy="10" rx="13" ry="6" fill="url(#head)" opacity="0.5"/>
     <polygon points="0,0 8,4 0,8 -8,4" fill="${scale(color, 0.7)}"/>
     <polygon points="0,-5 8,-1 8,4 0,0" fill="${color}"/>
     <polygon points="0,-5 -8,-1 -8,4 0,0" fill="${scale(color, 0.82)}"/>
     <polygon points="0,-5 8,-1 0,3 -8,-1" fill="${scale(color, 1.25)}"/>
-    <circle cx="6" cy="1.2" r="1.3" fill="#fff7d6"/>
+    <circle cx="6.6" cy="1.4" r="1.1" fill="#fff7d6"/>
+    <circle cx="6.6" cy="3.6" r="1.1" fill="#fff7d6"/>
+    <circle cx="-6.6" cy="1.6" r="1" fill="#ff3b3b"/>
+    <circle cx="-6.6" cy="3.8" r="1" fill="#ff3b3b"/>
   </g>`;
 }
 function carCss(id, from, to, dur, delay) {
@@ -271,15 +285,51 @@ function render(weeks) {
   const H = maxY - minY + PAD * 2;
   const vb = `${(minX - PAD).toFixed(1)} ${(minY - PAD).toFixed(1)} ${W.toFixed(1)} ${H.toFixed(1)}`;
 
+  // 星空と月（決定論的に配置＝出力が毎回安定する）
+  let seed = 987654321;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const skyTop = minY - PAD, skyBand = (maxY - minY) * 0.5;
+  let stars = "";
+  for (let i = 0; i < 46; i++) {
+    const sx = (minX - PAD + rnd() * W).toFixed(1);
+    const sy = (skyTop + rnd() * skyBand).toFixed(1);
+    const r = (0.4 + rnd() * 0.9).toFixed(1);
+    stars += `<circle cx="${sx}" cy="${sy}" r="${r}" fill="#e6ecff" class="st${i % 3}"/>`;
+  }
+  const mX = (minX - PAD + W * 0.85).toFixed(1), mY = (skyTop + skyBand * 0.3).toFixed(1);
+  const moon = `<circle cx="${mX}" cy="${mY}" r="30" fill="url(#moonGlow)"/><circle cx="${mX}" cy="${mY}" r="12" fill="#f4eecb"/>`;
+
+  // 静的アニメーション（窓のまたたき・障害灯の点滅・星のまたたき）
+  const staticCss = `
+@keyframes tw{0%,100%{opacity:1}50%{opacity:.45}}
+@keyframes twd{0%,45%,100%{opacity:1}60%,80%{opacity:.12}}
+.tw0{animation:tw 3.2s ease-in-out infinite}
+.tw1{animation:tw 4.1s ease-in-out -1.2s infinite}
+.tw2{animation:tw 3.6s ease-in-out -2.4s infinite}
+.tw3{animation:twd 6.5s ease-in-out -1s infinite}
+.tw4{animation:tw 4.8s ease-in-out -3.1s infinite}
+.tw5{animation:twd 7.3s ease-in-out -4s infinite}
+@keyframes beacon{0%,42%{opacity:1}50%,100%{opacity:.05}}
+.beacon{animation:beacon 1.6s steps(1,end) infinite}
+@keyframes star{0%,100%{opacity:.85}50%{opacity:.2}}
+.st0{animation:star 3s ease-in-out infinite}
+.st1{animation:star 4.5s ease-in-out -1.5s infinite}
+.st2{animation:star 5.5s ease-in-out -3s infinite}`;
+
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W.toFixed(0)}" height="${H.toFixed(0)}" viewBox="${vb}" font-family="Segoe UI, sans-serif">
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="${THEME.bg[0]}"/>
       <stop offset="1" stop-color="${THEME.bg[1]}"/>
     </linearGradient>
-    <style>${css}</style>
+    <radialGradient id="moonGlow"><stop offset="0" stop-color="#f4eecb" stop-opacity="0.45"/><stop offset="1" stop-color="#f4eecb" stop-opacity="0"/></radialGradient>
+    <radialGradient id="head"><stop offset="0" stop-color="#fff2b0" stop-opacity="0.85"/><stop offset="1" stop-color="#fff2b0" stop-opacity="0"/></radialGradient>
+    <style>${staticCss}
+${css}</style>
   </defs>
   <rect x="${(minX - PAD).toFixed(1)}" y="${(minY - PAD).toFixed(1)}" width="${W.toFixed(1)}" height="${H.toFixed(1)}" rx="12" fill="url(#sky)"/>
+  ${moon}
+  <g>${stars}</g>
   <g>${roads}</g>
   <g>${buildings}</g>
   <g>${frontRoad}</g>
