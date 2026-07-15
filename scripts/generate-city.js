@@ -79,6 +79,7 @@ async function fetchContributions(user, token) {
     user(login:$login){
       contributionsCollection{
         contributionCalendar{
+          totalContributions
           weeks{ contributionDays{ contributionCount weekday } }
         }
       }
@@ -91,7 +92,21 @@ async function fetchContributions(user, token) {
   });
   const json = await res.json();
   if (json.errors) throw new Error(JSON.stringify(json.errors));
-  return json.data.user.contributionsCollection.contributionCalendar.weeks;
+  const cal = json.data.user.contributionsCollection.contributionCalendar;
+  return { weeks: cal.weeks, total: cal.totalContributions };
+}
+
+// 統計（総数・現在の連続日数・自己ベスト）を算出
+function computeStats(weeks, total) {
+  const days = weeks.flatMap((w) => w.contributionDays);
+  const best = days.reduce((m, d) => Math.max(m, d.contributionCount), 0);
+  const sum = days.reduce((s, d) => s + d.contributionCount, 0);
+  let streak = 0;
+  for (let i = days.length - 1; i >= 0; i--) {
+    if (days[i].contributionCount > 0) streak++;
+    else break;
+  }
+  return { total: total != null ? total : sum, streak, best };
 }
 
 // トークンが無いときのモック（見た目確認用・決定論的）
@@ -197,7 +212,7 @@ function carCss(id, from, to, dur, delay) {
 }
 
 // ---------- SVG組み立て ----------
-function render(weeks) {
+function render(weeks, stats) {
   const rows = 7;
 
   // 週を街区に分割
@@ -316,6 +331,37 @@ function render(weeks) {
 .st1{animation:star 4.5s ease-in-out -1.5s infinite}
 .st2{animation:star 5.5s ease-in-out -3s infinite}`;
 
+  // 電光掲示板（ガントリー型・アイソメ平面に寝かせて街に溶け込ませる）
+  const hyp = Math.hypot(SX, SY);
+  const bbA = Math.round(totalCols * 0.10), bbB = Math.round(totalCols * 0.46);
+  const RF = totalRows + GAP * 0.7;         // 手前の本通り上（車より少し手前）
+  const yBot = 16, yTop = 38;               // 画面の下端/上端の高さ
+  const oCA = iso(bbA, RF), oCB = iso(bbB, RF);
+  const Lx = (bbB - bbA) * hyp;             // 画面の横幅（ローカルpx）
+  const Ly = yTop - yBot;                   // 画面の高さ
+  const mA = SX / hyp, mB = SY / hyp;       // ローカルx軸→アイソメ面の傾き
+  const bbMatrix = `matrix(${mA.toFixed(4)},${mB.toFixed(4)},0,1,${oCA.x.toFixed(2)},${(oCA.y - yTop).toFixed(2)})`;
+
+  // ティッカー文字列（実データ）
+  const S = `${stats.total.toLocaleString("en-US")} CONTRIBUTIONS   ·   ${stats.streak} DAY STREAK   ·   BEST ${stats.best}/DAY   ·   `;
+  const fontPx = Ly * 0.6;
+  const charW = fontPx * 0.6;
+  const oneLen = S.length * charW;
+  const reps = Math.ceil((Lx + oneLen) / oneLen) + 1;
+  const tickerText = S.repeat(reps);
+  const tickDur = Math.max(6, oneLen / 26).toFixed(1);
+  const tickerCss = `.ticker{animation:tick ${tickDur}s linear infinite}@keyframes tick{from{transform:translateX(0)}to{transform:translateX(-${oneLen.toFixed(1)}px)}}`;
+
+  const pole = (o) => `<rect x="${(o.x - 1).toFixed(1)}" y="${(o.y - yTop).toFixed(1)}" width="2" height="${yTop.toFixed(1)}" fill="#161c24"/>`;
+  const billboard = `${pole(oCA)}${pole(oCB)}
+  <g transform="${bbMatrix}">
+    <rect x="-4" y="-4" width="${(Lx + 8).toFixed(1)}" height="${(Ly + 8).toFixed(1)}" rx="3" fill="#05070a" stroke="#2b3340" stroke-width="1.5"/>
+    <rect x="0" y="0" width="${Lx.toFixed(1)}" height="${Ly.toFixed(1)}" fill="#0a0f14"/>
+    <g clip-path="url(#bbClip)">
+      <text class="ticker" x="0" y="${(Ly * 0.72).toFixed(1)}" font-family="'Courier New',monospace" font-weight="700" font-size="${fontPx.toFixed(1)}" letter-spacing="0.5" fill="#ffcf4d" filter="url(#ledGlow)">${tickerText}</text>
+    </g>
+  </g>`;
+
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W.toFixed(0)}" height="${H.toFixed(0)}" viewBox="${vb}" font-family="Segoe UI, sans-serif">
   <defs>
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
@@ -324,7 +370,13 @@ function render(weeks) {
     </linearGradient>
     <radialGradient id="moonGlow"><stop offset="0" stop-color="#f4eecb" stop-opacity="0.45"/><stop offset="1" stop-color="#f4eecb" stop-opacity="0"/></radialGradient>
     <radialGradient id="head"><stop offset="0" stop-color="#fff2b0" stop-opacity="0.85"/><stop offset="1" stop-color="#fff2b0" stop-opacity="0"/></radialGradient>
+    <filter id="ledGlow" x="-20%" y="-60%" width="140%" height="220%">
+      <feGaussianBlur stdDeviation="1.1" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="bbClip"><rect x="0" y="0" width="${Lx.toFixed(1)}" height="${Ly.toFixed(1)}"/></clipPath>
     <style>${staticCss}
+${tickerCss}
 ${css}</style>
   </defs>
   <rect x="${(minX - PAD).toFixed(1)}" y="${(minY - PAD).toFixed(1)}" width="${W.toFixed(1)}" height="${H.toFixed(1)}" rx="12" fill="url(#sky)"/>
@@ -334,21 +386,24 @@ ${css}</style>
   <g>${buildings}</g>
   <g>${frontRoad}</g>
   ${carsSvg}
+  ${billboard}
   <text x="${(minX - PAD + 14).toFixed(1)}" y="${(maxY + PAD - 12).toFixed(1)}" fill="${THEME.text}" font-size="11" opacity="0.7">@${USER} · contributions as a city</text>
 </svg>`;
 }
 
 // ---------- main ----------
 (async () => {
-  let weeks;
+  let weeks, total;
   if (TOKEN) {
     console.log(`Fetching contributions for ${USER}...`);
-    weeks = await fetchContributions(USER, TOKEN);
+    ({ weeks, total } = await fetchContributions(USER, TOKEN));
   } else {
     console.log("No GITHUB_TOKEN — using mock data for preview.");
     weeks = mockWeeks();
+    total = null; // モックでは合計から算出
   }
+  const stats = computeStats(weeks, total);
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  fs.writeFileSync(path.join(OUT_DIR, "city.svg"), render(weeks));
-  console.log(`Wrote city.svg to ${OUT_DIR}`);
+  fs.writeFileSync(path.join(OUT_DIR, "city.svg"), render(weeks, stats));
+  console.log(`Wrote city.svg to ${OUT_DIR} (total=${stats.total}, streak=${stats.streak}, best=${stats.best})`);
 })();
