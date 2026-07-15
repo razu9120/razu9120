@@ -3,7 +3,7 @@ name: Generate Profile Animations
 on:
   # 毎日 00:00 UTC に自動更新
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "0 18 * * *"
   # main へのpush時にも更新
   push:
     branches:
