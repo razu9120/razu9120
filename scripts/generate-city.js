@@ -237,6 +237,10 @@ function render(weeks, stats) {
         grid.push({ col: colOff + localCol, row: rowOff + d.weekday, count: d.contributionCount });
       });
     });
+    // 埋まっていない列は「空き地(平地)」として敷く
+    for (let lc = chunk.length; lc < WEEKS_PER_BLOCK; lc++)
+      for (let d = 0; d < rows; d++)
+        grid.push({ col: colOff + lc, row: rowOff + d, count: 0 });
   });
   grid.sort((a, b) => a.col + a.row - (b.col + b.row) || a.row - b.row);
   let buildings = "";
@@ -331,16 +335,27 @@ function render(weeks, stats) {
 .st1{animation:star 4.5s ease-in-out -1.5s infinite}
 .st2{animation:star 5.5s ease-in-out -3s infinite}`;
 
-  // 電光掲示板（ガントリー型・アイソメ平面に寝かせて街に溶け込ませる）
+  // 空き地（最後の不完全ブロックの余白）を特定し、小型の自立看板を置く
+  let plot = null;
+  chunks.forEach((chunk, k) => {
+    if (chunk.length < WEEKS_PER_BLOCK) {
+      const co = (k % BLOCKS_PER_ROW) * (WEEKS_PER_BLOCK + GAP);
+      const ro = Math.floor(k / BLOCKS_PER_ROW) * (rows + GAP);
+      plot = { c0: co + chunk.length, c1: co + WEEKS_PER_BLOCK, r0: ro, r1: ro + rows };
+    }
+  });
+  if (!plot) plot = { c0: totalCols - 3, c1: totalCols, r0: totalRows - rows, r1: totalRows };
+
   const hyp = Math.hypot(SX, SY);
-  const bbA = Math.round(totalCols * 0.10), bbB = Math.round(totalCols * 0.46);
-  const RF = totalRows + GAP * 0.7;         // 手前の本通り上（車より少し手前）
-  const yBot = 16, yTop = 38;               // 画面の下端/上端の高さ
-  const oCA = iso(bbA, RF), oCB = iso(bbB, RF);
-  const Lx = (bbB - bbA) * hyp;             // 画面の横幅（ローカルpx）
-  const Ly = yTop - yBot;                   // 画面の高さ
-  const mA = SX / hyp, mB = SY / hyp;       // ローカルx軸→アイソメ面の傾き
-  const bbMatrix = `matrix(${mA.toFixed(4)},${mB.toFixed(4)},0,1,${oCA.x.toFixed(2)},${(oCA.y - yTop).toFixed(2)})`;
+  const CF = plot.c0 + 1.2;                  // 看板の列位置（空き地内）
+  const rA = plot.r0 + 1, rB = plot.r1 - 1;  // 看板の横方向（行方向に伸ばす）
+  const midR = (rA + rB) / 2;
+  const yBot = 10, yTop = 26;                // 画面の下端/上端の高さ（小型）
+  const oA = iso(CF, rB);                     // 起点は手前側（rB）。右上へ読ませて反転を防ぐ
+  const Lx = (rB - rA) * hyp;                // 画面の横幅（ローカルpx）
+  const Ly = yTop - yBot;                    // 画面の高さ
+  const mA = SX / hyp, mB = -SY / hyp;       // 右面（行方向）へ寝かせて街に溶け込ませる
+  const bbMatrix = `matrix(${mA.toFixed(4)},${mB.toFixed(4)},0,1,${oA.x.toFixed(2)},${(oA.y - yTop).toFixed(2)})`;
 
   // ティッカー文字列（実データ）
   const S = `${stats.total.toLocaleString("en-US")} CONTRIBUTIONS   ·   ${stats.streak} DAY STREAK   ·   BEST ${stats.best}/DAY   ·   `;
@@ -349,16 +364,18 @@ function render(weeks, stats) {
   const oneLen = S.length * charW;
   const reps = Math.ceil((Lx + oneLen) / oneLen) + 1;
   const tickerText = S.repeat(reps);
-  const tickDur = Math.max(6, oneLen / 26).toFixed(1);
+  const tickDur = Math.max(6, oneLen / 22).toFixed(1);
   const tickerCss = `.ticker{animation:tick ${tickDur}s linear infinite}@keyframes tick{from{transform:translateX(0)}to{transform:translateX(-${oneLen.toFixed(1)}px)}}`;
 
-  const pole = (o) => `<rect x="${(o.x - 1).toFixed(1)}" y="${(o.y - yTop).toFixed(1)}" width="2" height="${yTop.toFixed(1)}" fill="#161c24"/>`;
-  const billboard = `${pole(oCA)}${pole(oCB)}
+  // 支柱（中央・地面から画面下端まで）
+  const postG = iso(CF, midR);
+  const post = `<rect x="${(postG.x - 1).toFixed(1)}" y="${(postG.y - yBot).toFixed(1)}" width="2" height="${yBot.toFixed(1)}" fill="#161c24"/>`;
+  const billboard = `${post}
   <g transform="${bbMatrix}">
-    <rect x="-4" y="-4" width="${(Lx + 8).toFixed(1)}" height="${(Ly + 8).toFixed(1)}" rx="3" fill="#05070a" stroke="#2b3340" stroke-width="1.5"/>
+    <rect x="-3" y="-3" width="${(Lx + 6).toFixed(1)}" height="${(Ly + 6).toFixed(1)}" rx="2" fill="#05070a" stroke="#2b3340" stroke-width="1.2"/>
     <rect x="0" y="0" width="${Lx.toFixed(1)}" height="${Ly.toFixed(1)}" fill="#0a0f14"/>
     <g clip-path="url(#bbClip)">
-      <text class="ticker" x="0" y="${(Ly * 0.72).toFixed(1)}" font-family="'Courier New',monospace" font-weight="700" font-size="${fontPx.toFixed(1)}" letter-spacing="0.5" fill="#ffcf4d" filter="url(#ledGlow)">${tickerText}</text>
+      <text class="ticker" x="0" y="${(Ly * 0.72).toFixed(1)}" font-family="'Courier New',monospace" font-weight="700" font-size="${fontPx.toFixed(1)}" letter-spacing="0.3" fill="#ffcf4d" filter="url(#ledGlow)">${tickerText}</text>
     </g>
   </g>`;
 
@@ -385,8 +402,8 @@ ${css}</style>
   <g>${roads}</g>
   <g>${buildings}</g>
   <g>${frontRoad}</g>
-  ${carsSvg}
   ${billboard}
+  ${carsSvg}
   <text x="${(minX - PAD + 14).toFixed(1)}" y="${(maxY + PAD - 12).toFixed(1)}" fill="${THEME.text}" font-size="11" opacity="0.7">@${USER} · contributions as a city</text>
 </svg>`;
 }
