@@ -347,10 +347,10 @@ function render(weeks, stats) {
   if (!plot) plot = { c0: totalCols - 3, c1: totalCols, r0: totalRows - rows, r1: totalRows };
 
   const hyp = Math.hypot(SX, SY);
-  const CF = plot.c0 + 1.2;                  // 看板の列位置（空き地内）
-  const rA = plot.r0 + 1, rB = plot.r1 - 1;  // 看板の横方向（行方向に伸ばす）
+  const CF = plot.c1 - 0.4;                  // 空き地の右端寄り＝手前右へ寄せる
+  const rA = plot.r0 + 2, rB = plot.r1;     // 手前(行が大きい側)へ寄せて直近の建物を隠さない
   const midR = (rA + rB) / 2;
-  const yBot = 10, yTop = 26;                // 画面の下端/上端の高さ（小型）
+  const yBot = 8, yTop = 22;                 // 小型・低め（背後の建物を隠さない）
   const oA = iso(CF, rB);                     // 起点は手前側（rB）。右上へ読ませて反転を防ぐ
   const Lx = (rB - rA) * hyp;                // 画面の横幅（ローカルpx）
   const Ly = yTop - yBot;                    // 画面の高さ
