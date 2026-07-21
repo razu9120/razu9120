@@ -74,26 +74,80 @@ function iso(col, row) {
 const pts = (arr) => arr.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
 
 // ---------- データ取得 ----------
+// 1年分を一括で contributionDays{contributionCount} 付きで問い合わせると、
+// アカウント全体の年間コントリビューション数が多い場合に GitHub 側の
+// GraphQL リソース上限 (RESOURCE_LIMITS_EXCEEDED) に達することがある。
+// そのため期間を分割して問い合わせ、日付をキーにマージする。
+const CHUNK_DAYS = 90;
+
+async function graphql(token, query, variables) {
+  const res = await fetch("https://api.github.com/graphql", {
+    method: "POST",
+    headers: { Authorization: `bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables }),
+  });
+  const json = await res.json();
+  if (json.errors) throw new Error(JSON.stringify(json.errors));
+  return json.data;
+}
+
+function groupIntoWeeks(days) {
+  const weeks = [];
+  let current = null;
+  for (const d of days) {
+    if (!current || d.weekday === 0) {
+      current = [];
+      weeks.push(current);
+    }
+    current.push(d);
+  }
+  return weeks.map((contributionDays) => ({ contributionDays }));
+}
+
 async function fetchContributions(user, token) {
-  const query = `query($login:String!){
+  const to = new Date();
+  const from = new Date(to);
+  from.setFullYear(from.getFullYear() - 1);
+
+  const totalQuery = `query($login:String!,$from:DateTime!,$to:DateTime!){
     user(login:$login){
-      contributionsCollection{
+      contributionsCollection(from:$from,to:$to){
+        contributionCalendar{ totalContributions }
+      }
+    }
+  }`;
+  const totalData = await graphql(token, totalQuery, {
+    login: user,
+    from: from.toISOString(),
+    to: to.toISOString(),
+  });
+  const total = totalData.user.contributionsCollection.contributionCalendar.totalContributions;
+
+  const weeksQuery = `query($login:String!,$from:DateTime!,$to:DateTime!){
+    user(login:$login){
+      contributionsCollection(from:$from,to:$to){
         contributionCalendar{
-          totalContributions
-          weeks{ contributionDays{ contributionCount weekday } }
+          weeks{ contributionDays{ date contributionCount weekday } }
         }
       }
     }
   }`;
-  const res = await fetch("https://api.github.com/graphql", {
-    method: "POST",
-    headers: { Authorization: `bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ query, variables: { login: user } }),
-  });
-  const json = await res.json();
-  if (json.errors) throw new Error(JSON.stringify(json.errors));
-  const cal = json.data.user.contributionsCollection.contributionCalendar;
-  return { weeks: cal.weeks, total: cal.totalContributions };
+  const dayMs = 24 * 60 * 60 * 1000;
+  const dayMap = new Map();
+  for (let chunkFrom = from; chunkFrom < to; ) {
+    const chunkTo = new Date(Math.min(chunkFrom.getTime() + CHUNK_DAYS * dayMs, to.getTime()));
+    const data = await graphql(token, weeksQuery, {
+      login: user,
+      from: chunkFrom.toISOString(),
+      to: chunkTo.toISOString(),
+    });
+    const cal = data.user.contributionsCollection.contributionCalendar;
+    for (const wk of cal.weeks) for (const d of wk.contributionDays) dayMap.set(d.date, d);
+    chunkFrom = chunkTo;
+  }
+
+  const days = [...dayMap.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
+  return { weeks: groupIntoWeeks(days), total };
 }
 
 // 統計（総数・現在の連続日数・自己ベスト）を算出
