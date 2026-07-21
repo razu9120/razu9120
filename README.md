@@ -19,20 +19,6 @@
 </div>
 
 <!-- ===================================================================== -->
-<!--  🐍 Snake animation                                                    -->
-<!--  ↓ 表示には .github/workflows/snake.yml が必要です（同梱しています）    -->
-<!-- ===================================================================== -->
-<!-- <div align="center">
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/razu9120/razu9120/output/github-contribution-grid-snake-dark.svg" />
-  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/razu9120/razu9120/output/github-contribution-grid-snake.svg" />
-  <img alt="github-snake" src="https://raw.githubusercontent.com/razu9120/razu9120/output/github-contribution-grid-snake.svg" />
-</picture>
-
-</div> -->
-
-<!-- ===================================================================== -->
 <!--  📊 GitHub Analytics (放置で自動更新されます)                          -->
 <!-- ===================================================================== -->
 <!-- <div align="center">
